@@ -35,21 +35,25 @@ def version():
 
 @main.command("render")
 @click.argument("project-path", type=Path)
-@click.option("--fps", type=int, default=60)
-@click.option("--height", type=int, default=180)
+@click.option("--output-path-template", type=str, default=OUTFILE_TEMPLATE)
+@click.option("--fps", type=int, default=15)
 @click.option("--width", type=int, default=320)
+@click.option("--height", type=int, default=180)
 @click.option("--audio-bitrate", type=int, default=96)
 @click.option("--video-bitrate", type=int, default=32)
-@click.option("--output-path-template", type=str, default=OUTFILE_TEMPLATE)
+@click.option("--audio-codec", type=str, default="aac")
+@click.option("--video-codec", type=str, default="libx264")
 @click.option("--overwrite", type=bool, is_flag=True, default=False)
 def render(
     project_path: Path,
+    output_path_template: str,
     fps: int,
-    height: int,
     width: int,
+    height: int,
     audio_bitrate: int,
     video_bitrate: int,
-    output_path_template: str,
+    audio_codec: str,
+    video_codec: str,
     overwrite: bool,
 ):
     project_path = project_path.absolute()
@@ -72,7 +76,7 @@ def render(
     try:
         slot = Slot(project_path.absolute())
         audio_frames = min(slot.get_song_length_frames(), MAX_FRAMES)
-        video_duration = audio_frames / FREQ
+        video_duration = audio_frames // FREQ
         output = np.zeros((audio_frames, 2), DATA_TYPE)
         buffer = np.zeros((audio_frames_per_video_frame, 2), DATA_TYPE)
         output_snapshots = []
@@ -149,6 +153,8 @@ def render(
         str(output_path),
         fps=fps,
         bitrate=f"{video_bitrate}k",
+        codec=video_codec,
+        audio_codec=audio_codec,
         audio_fps=FREQ,
         audio_bitrate=f"{audio_bitrate}k",
         remove_temp=False,
