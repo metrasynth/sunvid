@@ -41,6 +41,7 @@ def version():
 @click.option("--fps", type=int, default=15)
 @click.option("--width", type=int, default=320)
 @click.option("--height", type=int, default=180)
+@click.option("--font", type=str, default="SunDogMedium")
 @click.option("--audio-bitrate", type=int, default=96)
 @click.option("--video-bitrate", type=int, default=32)
 @click.option("--audio-codec", type=str, default="aac")
@@ -52,6 +53,7 @@ def render(
     fps: int,
     width: int,
     height: int,
+    font: str,
     audio_bitrate: int,
     video_bitrate: int,
     audio_codec: str,
@@ -138,6 +140,7 @@ def render(
     text_clip = moviepy.editor.TextClip(
         slot.get_song_name(),
         font_size=12,
+        font=font,
         color="white",
     )
     text_clip = text_clip.with_position("center")
