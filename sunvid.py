@@ -7,6 +7,8 @@ import moviepy.editor
 import numpy as np
 import pkg_resources
 from sunvox.api import INIT_FLAG, Slot, audio_callback, deinit, get_ticks, init
+from tqdm import tqdm
+
 
 FREQ = 48000
 CHANNELS = 2
@@ -86,7 +88,7 @@ def render(
             f"{audio_frames_per_video_frame} frames at a time..."
         )
         position = 0
-        with click.progressbar(length=audio_frames) as bar:
+        with tqdm(total=audio_frames, unit="frame", unit_scale=True) as bar:
             slot.play_from_beginning()
             while position < audio_frames:
                 # Grab all master output.
@@ -122,7 +124,7 @@ def render(
                 output_snapshot = np.block([output_snapshot_l, output_snapshot_r])
                 output_snapshots.append(output_snapshot)
 
-                bar.update(position / 7680)  # [TODO] why do we have to divide by 7680?
+                bar.update(copy_size)
     finally:
         deinit()
 
