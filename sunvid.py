@@ -127,7 +127,6 @@ def render(
         deinit()
 
     click.echo(f"Compositing {video_duration} video frames at {fps} FPS...")
-    print(output.shape)
     audio_clip = moviepy.audio.AudioClip.AudioArrayClip(output, FREQ)
     bg_clip = moviepy.editor.ColorClip(
         (width, height),
