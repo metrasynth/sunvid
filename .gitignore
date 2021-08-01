@@ -127,3 +127,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Artifacts
+*.mp4
+*.mp3
+*.sunvox

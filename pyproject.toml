@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "SunVid"
+version = "0.1.0"
+description = "SunVid creates mp4 files from SunVox projects"
+authors = ["Matthew Scott <matt@11craft.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.9,<3.10"
+sunvox-dll-python = "^0.3.1"
+click = "^8.0.1"
+moviepy = {git = "https://github.com/Zulko/moviepy", rev = "cd473ff7"}
+
+[tool.poetry.dev-dependencies]
+jupyterlab = "^3.1.1"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
