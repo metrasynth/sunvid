@@ -2,10 +2,10 @@ import ctypes
 from pathlib import Path
 
 import click
-import moviepy.audio.AudioClip
-import moviepy.editor
 import numpy as np
 import pkg_resources
+from moviepy.editor import ColorClip, CompositeVideoClip, TextClip, VideoClip
+from moviepy.audio.AudioClip import AudioArrayClip
 from sunvox.api import INIT_FLAG, Slot, audio_callback, deinit, get_ticks, init
 from tqdm import tqdm
 
@@ -123,7 +123,8 @@ def render(
                 assert received_l == received_r
                 output_snapshot_l.shape = (received_l,)
                 output_snapshot_r.shape = (received_r,)
-                output_snapshot = np.block([output_snapshot_l, output_snapshot_r])
+                output_snapshot = np.stack([output_snapshot_l, output_snapshot_r])
+                output_snapshot = output_snapshot.astype(np.float32) / 32768.0
                 output_snapshots.append(output_snapshot)
 
                 bar.update(copy_size)
@@ -131,8 +132,10 @@ def render(
         deinit()
 
     click.echo(f"Compositing {video_duration} video frames at {fps} FPS...")
-    audio_clip = moviepy.audio.AudioClip.AudioArrayClip(output, FREQ)
-    bg_clip = moviepy.editor.ColorClip(
+
+    audio_clip = AudioArrayClip(output, FREQ)
+
+    bg_clip = ColorClip(
         (width, height),
         color=(0, 0, 0),
         duration=video_duration,
@@ -145,8 +148,81 @@ def render(
     )
     text_clip = text_clip.with_position("center")
     text_clip = text_clip.with_duration(video_duration)
-    video = moviepy.editor.CompositeVideoClip(
-        [bg_clip, text_clip],
+
+    osc_w = width // 4
+    osc_h = height // 4
+
+    def make_osc_frame(t: float):
+        vframe = int(t * fps)
+        vframedata = np.zeros((osc_h, osc_w, 3), np.uint8)
+        if vframe >= len(output_snapshots):
+            return vframedata
+        snapshot = output_snapshots[vframe]
+        aframes = len(snapshot[0])
+        # Draw axis.
+        for x in range(osc_w):
+            y = osc_h // 2
+            vframedata[y][x] = [96, 96, 96]
+        # Draw scope.
+        h2 = osc_h / 2.0
+        combined: np.ndarray = snapshot.sum(0)
+        combined = -combined
+        combined /= 2
+        combined = combined.clip(-1.0, 1.0)
+        combined *= h2
+        combined += h2
+        combined = combined.astype(np.uint16)
+        combined = combined.clip(0, osc_h - 1)
+        for aframe in range(aframes):
+            x = int(aframe / aframes * osc_w)
+            y = combined[aframe]
+            vframedata[y][x] = [255, 255, 255]
+        return vframedata
+
+    osc_clip = VideoClip(make_frame=make_osc_frame)
+    osc_clip = osc_clip.with_position((0, height - osc_h))
+
+    def make_xy_frame(t: float):
+        vframe = int(t * fps)
+        vframedata = np.zeros((osc_h, osc_w, 3), np.uint8)
+        if vframe >= len(output_snapshots):
+            return vframedata
+        snapshot = output_snapshots[vframe]
+        aframes = len(snapshot[0])
+        # Draw axes.
+        for x in range(osc_w):
+            y = osc_h // 2
+            vframedata[y][x] = [96, 96, 96]
+        for y in range(osc_h):
+            x = osc_w // 2
+            vframedata[y][x] = [96, 96, 96]
+        # Draw scope.
+        h2 = osc_h / 2.0
+        w2 = osc_w / 2.0
+        xs: np.ndarray = snapshot[0]
+        ys: np.ndarray = snapshot[1]
+        xs *= 0.5625
+        ys = -ys
+        xs *= w2
+        xs += w2
+        ys *= h2
+        ys += h2
+        xs = xs.astype(np.int16)
+        ys = ys.astype(np.int16)
+        for aframe in range(aframes):
+            x = xs[aframe]
+            y = ys[aframe]
+            if x < 0 or x >= osc_w or y < 0 or y >= osc_h:
+                continue
+            vframedata[y][x] = [255, 255, 255]
+        return vframedata
+
+    xy_clip = VideoClip(make_frame=make_xy_frame)
+    xy_clip = xy_clip.with_position((width - osc_w, height - osc_h))
+
+    video = CompositeVideoClip(
+        [bg_clip, text_clip, osc_clip, xy_clip],
+        # [bg_clip, text_clip, osc_clip],
         size=(width, height),
     )
     video = video.with_audio(audio_clip)
