@@ -21,7 +21,7 @@ SCOPE_CDATA_TYPE = ctypes.POINTER(ctypes.c_int16)
 MAX_MINUTES = 8.0
 MAX_FRAMES = int(FREQ * 60 * MAX_MINUTES)
 
-OUTFILE_TEMPLATE = "{project_path.stem}-{width}x{height}-{fps}fps.mp4"
+DEFAULT_OUTPUT_PATH_TEMPLATE = "{project_path.stem}-{width}x{height}-{fps}fps.mp4"
 
 
 @click.group("sunvid")
@@ -37,7 +37,7 @@ def version():
 
 @main.command("render")
 @click.argument("project-path", type=Path)
-@click.option("--output-path-template", type=str, default=OUTFILE_TEMPLATE)
+@click.option("--output-path-template", type=str, default=DEFAULT_OUTPUT_PATH_TEMPLATE)
 @click.option("--fps", type=int, default=15)
 @click.option("--width", type=int, default=320)
 @click.option("--height", type=int, default=180)
