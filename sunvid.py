@@ -32,7 +32,7 @@ def main():
 @main.command("version")
 def version():
     info = pkg_resources.get_distribution("sunvid")
-    print(info)
+    click.echo(info)
 
 
 @main.command("render")
