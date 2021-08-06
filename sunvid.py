@@ -22,6 +22,7 @@ MAX_MINUTES = 8.0
 MAX_FRAMES = int(FREQ * 60 * MAX_MINUTES)
 
 DEFAULT_OUTPUT_PATH_TEMPLATE = "{project_path.stem}-{width}x{height}-{fps}fps.mp4"
+DEFAULT_SONG_NAME_TEMPLATE = "{song_name}"
 
 
 @click.group("sunvid")
@@ -38,6 +39,7 @@ def version():
 @main.command("render")
 @click.argument("project-path", type=Path)
 @click.option("--output-path-template", type=str, default=DEFAULT_OUTPUT_PATH_TEMPLATE)
+@click.option("--song-name-template", type=str, default=DEFAULT_SONG_NAME_TEMPLATE)
 @click.option("--fps", type=int, default=15)
 @click.option("--width", type=int, default=320)
 @click.option("--height", type=int, default=180)
@@ -50,6 +52,7 @@ def version():
 def render(
     project_path: Path,
     output_path_template: str,
+    song_name_template: str,
     fps: int,
     width: int,
     height: int,
@@ -140,8 +143,10 @@ def render(
         color=(0, 0, 0),
         duration=video_duration,
     )
-    text_clip = moviepy.editor.TextClip(
-        slot.get_song_name(),
+
+    text = song_name_template.format(song_name=slot.get_song_name())
+    text_clip = TextClip(
+        text,
         font_size=12,
         font=font,
         color="white",
