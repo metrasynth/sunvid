@@ -49,6 +49,7 @@ def version():
 @click.option("--audio-codec", type=str, default="aac")
 @click.option("--video-codec", type=str, default="libx264")
 @click.option("--overwrite", type=bool, is_flag=True, default=False)
+@click.option("--preview", type=bool, is_flag=True, default=False)
 def render(
     project_path: Path,
     output_path_template: str,
@@ -62,6 +63,7 @@ def render(
     audio_codec: str,
     video_codec: str,
     overwrite: bool,
+    preview: bool,
 ):
     project_path = project_path.absolute()
     if not project_path.exists():
@@ -232,6 +234,11 @@ def render(
     )
     video = video.with_audio(audio_clip)
     video = video.with_duration(video_duration)
+
+    if preview:
+        click.echo("Previewing...")
+        video.preview(fps=fps)
+        return
 
     click.echo(f"Writing to {output_path}...")
     video.write_videofile(
