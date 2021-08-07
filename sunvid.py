@@ -69,6 +69,9 @@ def render(
     if not project_path.exists():
         raise FileNotFoundError(f"{project_path} not found")
     output_path = project_path.parent / output_path_template.format(**locals())
+    if song_name_template.startswith("@"):
+        song_name_template_path = Path(song_name_template[1:])
+        song_name_template = song_name_template_path.read_text()
     if output_path.exists() and not overwrite:
         raise FileExistsError(f"{output_path} already exists")
     if FREQ / fps != (audio_frames_per_video_frame := int(FREQ / fps)):
