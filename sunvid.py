@@ -6,9 +6,11 @@ import numpy as np
 import pkg_resources
 from moviepy.editor import ColorClip, CompositeVideoClip, TextClip, VideoClip
 from moviepy.audio.AudioClip import AudioArrayClip
+from moviepy.video.fx import fadein
 from sunvox.api import INIT_FLAG, Slot, audio_callback, deinit, get_ticks, init
 from tqdm import tqdm
 
+SCOPE_FADE_IN_DURATION = 1.0
 
 FREQ = 48000
 CHANNELS = 2
@@ -191,6 +193,7 @@ def render(
 
     osc_clip = VideoClip(make_frame=make_osc_frame)
     osc_clip = osc_clip.with_position((0, height - osc_h))
+    osc_clip = fadein(osc_clip, SCOPE_FADE_IN_DURATION)
 
     def make_xy_frame(t: float):
         vframe = int(t * fps)
@@ -229,6 +232,7 @@ def render(
 
     xy_clip = VideoClip(make_frame=make_xy_frame)
     xy_clip = xy_clip.with_position((width - osc_w, height - osc_h))
+    xy_clip = fadein(xy_clip, SCOPE_FADE_IN_DURATION)
 
     video = CompositeVideoClip(
         [bg_clip, text_clip, osc_clip, xy_clip],
