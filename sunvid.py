@@ -72,7 +72,7 @@ def render(
     if song_name_template.startswith("@"):
         song_name_template_path = Path(song_name_template[1:])
         song_name_template = song_name_template_path.read_text()
-    if output_path.exists() and not overwrite:
+    if not preview and output_path.exists() and not overwrite:
         raise FileExistsError(f"{output_path} already exists")
     if FREQ / fps != (audio_frames_per_video_frame := int(FREQ / fps)):
         raise ValueError(f"{FREQ} not evenly divisible by {fps}")
