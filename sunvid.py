@@ -302,24 +302,52 @@ def render(
         return
 
     click.echo(f"Writing to {output_path}...")
+    max_bytes = max_kb * 1024
     if video_codec == "none":
-        audio_clip.write_audiofile(
-            str(output_path),
-            fps=audio_freq,
-            bitrate=f"{audio_bitrate}k",
-            codec=audio_codec,
-        )
+        while True:
+            audio_clip.write_audiofile(
+                str(output_path),
+                fps=audio_freq,
+                bitrate=f"{audio_bitrate}k",
+                codec=audio_codec,
+            )
+            if (size := output_path.stat().st_size) <= max_bytes:
+                break
+            if audio_bitrate <= 64:
+                break
+            audio_bitrate -= 32
+            click.echo(
+                f"{size} exceeds {max_bytes}; "
+                f"rerendering with new audio bitrate {audio_bitrate}"
+            )
     else:
-        video.write_videofile(
-            str(output_path),
-            fps=fps,
-            bitrate=f"{video_bitrate}k",
-            codec=video_codec,
-            audio_codec=audio_codec,
-            audio_fps=audio_freq,
-            audio_bitrate=f"{audio_bitrate}k",
-            remove_temp=True,
-        )
+        while True:
+            video.write_videofile(
+                str(output_path),
+                fps=fps,
+                bitrate=f"{video_bitrate}k",
+                codec=video_codec,
+                audio_codec=audio_codec,
+                audio_fps=audio_freq,
+                audio_bitrate=f"{audio_bitrate}k",
+                remove_temp=True,
+            )
+            if (size := output_path.stat().st_size) <= max_bytes:
+                break
+            if audio_bitrate <= 64 and video_bitrate <= 32:
+                break
+            if video_bitrate > 32:
+                video_bitrate -= 32
+                click.echo(
+                    f"{size} exceeds {max_bytes}; "
+                    f"rerendering with new video bitrate {video_bitrate}"
+                )
+            else:
+                audio_bitrate -= 32
+                click.echo(
+                    f"{size} exceeds {max_bytes}; "
+                    f"rerendering with new audio bitrate {audio_bitrate}"
+                )
 
 
 if __name__ == "__main__":
