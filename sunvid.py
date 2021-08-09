@@ -1,5 +1,6 @@
 import ctypes
 from pathlib import Path
+from typing import Optional
 
 import click
 import numpy as np
@@ -8,6 +9,9 @@ from moviepy.editor import ColorClip, CompositeVideoClip, TextClip, VideoClip, I
 from moviepy.audio.AudioClip import AudioArrayClip
 from sunvox.api import INIT_FLAG, Slot, audio_callback, deinit, get_ticks, init
 from tqdm import tqdm
+
+MAXIMUM_AUDIO_BITRATE = 320
+MAXIMUM_VIDEO_BITRATE = 6000
 
 DATA_TYPE = np.float32
 CDATA_TYPE = ctypes.POINTER(ctypes.c_float)
@@ -44,8 +48,8 @@ def version():
 @click.option("--font", type=str, default=str(DEFAULT_SUNDOGMEDIUM_PATH))
 @click.option("--sunvox-logo-path", type=Path, default=DEFAULT_SUNVOX_LOGO_PATH)
 @click.option("--sunvox-logo-text", type=str, default=DEFAULT_SUNVOX_LOGO_TEXT)
-@click.option("--audio-bitrate", type=int, default=160)
-@click.option("--video-bitrate", type=int, default=32)
+@click.option("--audio-bitrate", type=int, default=None)
+@click.option("--video-bitrate", type=int, default=None)
 @click.option("--audio-codec", type=str, default="aac")
 @click.option("--video-codec", type=str, default="libx264")
 @click.option("--audio-freq", type=int, default=48000)
@@ -62,8 +66,8 @@ def render(
     font: str,
     sunvox_logo_path: Path,
     sunvox_logo_text: str,
-    audio_bitrate: int,
-    video_bitrate: int,
+    audio_bitrate: Optional[int],
+    video_bitrate: Optional[int],
     audio_codec: str,
     video_codec: str,
     audio_freq: int,
@@ -91,12 +95,44 @@ def render(
         | INIT_FLAG.USER_AUDIO_CALLBACK
         | INIT_FLAG.NO_DEBUG_OUTPUT,
     )
-    total_bitrate = audio_bitrate + video_bitrate
-    max_minutes = max_kb * 8 / total_bitrate / 60
-    max_aframes = int(audio_freq * 60 * max_minutes)
     try:
         slot = Slot(project_path.absolute())
         song_frames = slot.get_song_length_frames()
+
+        if audio_bitrate and video_bitrate:
+            total_bitrate = audio_bitrate + video_bitrate
+            max_minutes = max_kb * 8 / total_bitrate / 60
+            max_aframes = int(audio_freq * 60 * max_minutes)
+        else:
+            # Calculate maximum bitrates that will fit within the maximum file size.
+            audio_bitrate = audio_bitrate or 64
+            video_bitrate = video_bitrate or (0 if video_codec == "none" else 32)
+            # [TODO] clean up this code
+            total_bitrate = audio_bitrate + video_bitrate
+            max_minutes = max_kb * 8 / total_bitrate / 60
+            max_aframes = int(audio_freq * 60 * max_minutes)
+            while True:
+                if audio_bitrate < MAXIMUM_AUDIO_BITRATE:
+                    new_audio_bitrate = audio_bitrate + 32
+                    new_video_bitrate = video_bitrate
+                elif video_codec == "none":
+                    break
+                elif video_bitrate >= MAXIMUM_VIDEO_BITRATE:
+                    break
+                else:
+                    new_audio_bitrate = audio_bitrate
+                    new_video_bitrate = video_bitrate + 32
+                new_total_bitrate = new_audio_bitrate + new_video_bitrate
+                new_max_minutes = max_kb * 8 / new_total_bitrate / 60
+                new_max_aframes = int(audio_freq * 60 * new_max_minutes)
+                if new_max_aframes < song_frames:
+                    break
+                audio_bitrate = new_audio_bitrate
+                video_bitrate = new_video_bitrate
+                total_bitrate = new_total_bitrate
+                max_minutes = new_max_minutes
+                max_aframes = new_max_aframes
+
         audio_frames = min(song_frames, max_aframes)
         video_duration = audio_frames // audio_freq
         output = np.zeros((audio_frames, 2), DATA_TYPE)
@@ -105,7 +141,8 @@ def render(
         output_50ms_frames = int(audio_freq / 1000 * 50)
         click.echo(
             f"Rendering {audio_frames} frames of audio, "
-            f"{audio_frames_per_video_frame} frames at a time..."
+            f"{audio_frames_per_video_frame} frames at a time, "
+            f"at {audio_bitrate}kbps audio, {video_bitrate}kbps video..."
         )
         position = 0
         with tqdm(total=audio_frames, unit="frame", unit_scale=True) as bar:
