@@ -1,6 +1,6 @@
 import ctypes
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import click
 import numpy as np
@@ -178,8 +178,7 @@ def render(
                 assert received_l == received_r
                 output_snapshot_l.shape = (received_l,)
                 output_snapshot_r.shape = (received_r,)
-                output_snapshot = np.stack([output_snapshot_l, output_snapshot_r])
-                output_snapshots.append(output_snapshot)
+                output_snapshots.append((output_snapshot_l, output_snapshot_r))
 
                 bar.update(copy_size)
     finally:
@@ -204,39 +203,43 @@ def render(
     )
     text_clip = text_clip.with_position(("center", "top"))
 
-    osc_w = width // 4
-    osc_h = height // 4
+    osc_w = width // 3
+    osc_h = height // 3
 
-    def make_osc_frame(t: float):
-        vframe = int(t * fps)
-        vframedata = np.zeros((osc_h, osc_w, 3), np.uint8)
-        # Draw axis.
-        for x in range(osc_w):
-            y = osc_h // 2
-            vframedata[y][x] = [96, 96, 96]
-        if vframe >= len(output_snapshots):
+    def osc_frame_maker(channel):
+        def make_osc_frame(t: float):
+            vframe = int(t * fps)
+            vframedata = np.zeros((osc_h, osc_w, 3), np.uint8)
+            # Draw axis.
+            for x in range(osc_w):
+                y = osc_h // 2
+                vframedata[y][x] = [96, 96, 96]
+            if vframe >= len(output_snapshots):
+                return vframedata
+            snapshots: Tuple[np.ndarray, np.ndarray] = output_snapshots[vframe]
+            snapshot = snapshots[channel].astype(np.float32)
+            aframes = len(snapshot)
+            # Draw scope.
+            h2 = osc_h / 2.0
+            snapshot = -snapshot
+            snapshot /= 32768.0
+            snapshot = snapshot.clip(-1.0, 1.0)
+            snapshot *= h2
+            snapshot += h2
+            snapshot = snapshot.astype(np.uint16)
+            snapshot = snapshot.clip(0, osc_h - 1)
+            for aframe in range(aframes):
+                x = int(aframe / aframes * osc_w)
+                y = snapshot[aframe]
+                vframedata[y][x] = [255, 255, 255]
             return vframedata
-        snapshot: np.ndarray = output_snapshots[vframe]
-        snapshot = snapshot.astype(np.float32)
-        aframes = len(snapshot[0])
-        # Draw scope.
-        h2 = osc_h / 2.0
-        combined: np.ndarray = snapshot.mean(0)
-        combined = -combined
-        combined /= 32768.0
-        combined = combined.clip(-1.0, 1.0)
-        combined *= h2
-        combined += h2
-        combined = combined.astype(np.uint16)
-        combined = combined.clip(0, osc_h - 1)
-        for aframe in range(aframes):
-            x = int(aframe / aframes * osc_w)
-            y = combined[aframe]
-            vframedata[y][x] = [255, 255, 255]
-        return vframedata
 
-    osc_clip = VideoClip(make_frame=make_osc_frame)
-    osc_clip = osc_clip.with_position((0, height - osc_h - 24))
+        return make_osc_frame
+
+    osc_clip_l = VideoClip(make_frame=osc_frame_maker(0))
+    osc_clip_l = osc_clip_l.with_position((0, height - osc_h - 24))
+    osc_clip_r = VideoClip(make_frame=osc_frame_maker(1))
+    osc_clip_r = osc_clip_r.with_position((width - osc_w, height - osc_h - 24))
 
     def make_xy_frame(t: float):
         vframe = int(t * fps)
@@ -250,14 +253,13 @@ def render(
             vframedata[y][x] = [96, 96, 96]
         if vframe >= len(output_snapshots):
             return vframedata
-        snapshot = output_snapshots[vframe]
-        snapshot = snapshot.astype(np.float32)
-        aframes = len(snapshot[0])
+        snapshots = output_snapshots[vframe]
+        xs: np.ndarray = snapshots[0].astype(np.float32)
+        ys: np.ndarray = snapshots[1].astype(np.float32)
+        aframes = len(xs)
         # Draw scope.
         h2 = osc_h / 2.0
         w2 = osc_w / 2.0
-        xs: np.ndarray = snapshot[0]
-        ys: np.ndarray = snapshot[1]
         xs /= 32768.0
         ys /= 32768.0
         xs *= 0.5625
@@ -277,7 +279,7 @@ def render(
         return vframedata
 
     xy_clip = VideoClip(make_frame=make_xy_frame)
-    xy_clip = xy_clip.with_position((width - osc_w, height - osc_h - 24))
+    xy_clip = xy_clip.with_position((osc_w, height - osc_h - 24))
 
     sunvox_logo_clip = ImageClip(sunvox_logo_path).with_position((0, height - 24))
 
@@ -290,7 +292,15 @@ def render(
     sunvox_text_clip = sunvox_text_clip.with_position((30, height - 18))
 
     video = CompositeVideoClip(
-        [bg_clip, text_clip, osc_clip, xy_clip, sunvox_logo_clip, sunvox_text_clip],
+        [
+            bg_clip,
+            text_clip,
+            osc_clip_l,
+            osc_clip_r,
+            xy_clip,
+            sunvox_logo_clip,
+            sunvox_text_clip,
+        ],
         size=(width, height),
     )
     video = video.with_audio(audio_clip)
