@@ -137,7 +137,6 @@ def render(
                 output_snapshot_l.shape = (received_l,)
                 output_snapshot_r.shape = (received_r,)
                 output_snapshot = np.stack([output_snapshot_l, output_snapshot_r])
-                output_snapshot = output_snapshot.astype(np.float32) / 32768.0
                 output_snapshots.append(output_snapshot)
 
                 bar.update(copy_size)
@@ -170,19 +169,20 @@ def render(
     def make_osc_frame(t: float):
         vframe = int(t * fps)
         vframedata = np.zeros((osc_h, osc_w, 3), np.uint8)
-        if vframe >= len(output_snapshots):
-            return vframedata
-        snapshot = output_snapshots[vframe]
-        aframes = len(snapshot[0])
         # Draw axis.
         for x in range(osc_w):
             y = osc_h // 2
             vframedata[y][x] = [96, 96, 96]
+        if vframe >= len(output_snapshots):
+            return vframedata
+        snapshot: np.ndarray = output_snapshots[vframe]
+        snapshot = snapshot.astype(np.float32)
+        aframes = len(snapshot[0])
         # Draw scope.
         h2 = osc_h / 2.0
-        combined: np.ndarray = snapshot.sum(0)
+        combined: np.ndarray = snapshot.mean(0)
         combined = -combined
-        combined /= 2
+        combined /= 32768.0
         combined = combined.clip(-1.0, 1.0)
         combined *= h2
         combined += h2
@@ -201,10 +201,6 @@ def render(
     def make_xy_frame(t: float):
         vframe = int(t * fps)
         vframedata = np.zeros((osc_h, osc_w, 3), np.uint8)
-        if vframe >= len(output_snapshots):
-            return vframedata
-        snapshot = output_snapshots[vframe]
-        aframes = len(snapshot[0])
         # Draw axes.
         for x in range(osc_w):
             y = osc_h // 2
@@ -212,11 +208,18 @@ def render(
         for y in range(osc_h):
             x = osc_w // 2
             vframedata[y][x] = [96, 96, 96]
+        if vframe >= len(output_snapshots):
+            return vframedata
+        snapshot = output_snapshots[vframe]
+        snapshot = snapshot.astype(np.float32)
+        aframes = len(snapshot[0])
         # Draw scope.
         h2 = osc_h / 2.0
         w2 = osc_w / 2.0
         xs: np.ndarray = snapshot[0]
         ys: np.ndarray = snapshot[1]
+        xs /= 32768.0
+        ys /= 32768.0
         xs *= 0.5625
         ys = -ys
         xs *= w2
