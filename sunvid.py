@@ -251,16 +251,24 @@ def render(
         return
 
     click.echo(f"Writing to {output_path}...")
-    video.write_videofile(
-        str(output_path),
-        fps=fps,
-        bitrate=f"{video_bitrate}k",
-        codec=video_codec,
-        audio_codec=audio_codec,
-        audio_fps=audio_freq,
-        audio_bitrate=f"{audio_bitrate}k",
-        remove_temp=False,
-    )
+    if video_codec == "none":
+        audio_clip.write_audiofile(
+            str(output_path),
+            fps=audio_freq,
+            bitrate=f"{audio_bitrate}k",
+            codec=audio_codec,
+        )
+    else:
+        video.write_videofile(
+            str(output_path),
+            fps=fps,
+            bitrate=f"{video_bitrate}k",
+            codec=video_codec,
+            audio_codec=audio_codec,
+            audio_fps=audio_freq,
+            audio_bitrate=f"{audio_bitrate}k",
+            remove_temp=True,
+        )
 
 
 if __name__ == "__main__":
