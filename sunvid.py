@@ -134,7 +134,7 @@ def render(
                 max_aframes = new_max_aframes
 
         audio_frames = min(song_frames, max_aframes)
-        video_duration = audio_frames // audio_freq
+        video_duration = audio_frames / audio_freq + 1.0 / fps
         output = np.zeros((audio_frames, 2), DATA_TYPE)
         buffer = np.zeros((audio_frames_per_video_frame, 2), DATA_TYPE)
         output_snapshots = []
@@ -185,7 +185,7 @@ def render(
     finally:
         deinit()
 
-    click.echo(f"Compositing {video_duration} video frames at {fps} FPS...")
+    click.echo(f"Compositing {video_duration} seconds of video at {fps} FPS...")
 
     audio_clip = AudioArrayClip(output, audio_freq)
 
