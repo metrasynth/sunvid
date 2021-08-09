@@ -12,16 +12,11 @@ from tqdm import tqdm
 
 SCOPE_FADE_IN_DURATION = 1.0
 
-FREQ = 48000
-CHANNELS = 2
 DATA_TYPE = np.float32
 CDATA_TYPE = ctypes.POINTER(ctypes.c_float)
 
 SCOPE_DATA_TYPE = np.int16
 SCOPE_CDATA_TYPE = ctypes.POINTER(ctypes.c_int16)
-
-MAX_MINUTES = 8.0
-MAX_FRAMES = int(FREQ * 60 * MAX_MINUTES)
 
 DEFAULT_OUTPUT_PATH_TEMPLATE = "{project_path.stem}-{width}x{height}-{fps}fps.mp4"
 DEFAULT_SONG_NAME_TEMPLATE = "{song_name}"
@@ -46,12 +41,14 @@ def version():
 @click.option("--width", type=int, default=320)
 @click.option("--height", type=int, default=180)
 @click.option("--font", type=str, default="SunDogMedium")
-@click.option("--audio-bitrate", type=int, default=96)
+@click.option("--audio-bitrate", type=int, default=160)
 @click.option("--video-bitrate", type=int, default=32)
 @click.option("--audio-codec", type=str, default="aac")
 @click.option("--video-codec", type=str, default="libx264")
+@click.option("--audio-freq", type=int, default=48000)
 @click.option("--overwrite", type=bool, is_flag=True, default=False)
 @click.option("--preview", type=bool, is_flag=True, default=False)
+@click.option("--max-kb", type=int, default=8000)
 def render(
     project_path: Path,
     output_path_template: str,
@@ -64,8 +61,10 @@ def render(
     video_bitrate: int,
     audio_codec: str,
     video_codec: str,
+    audio_freq: int,
     overwrite: bool,
     preview: bool,
+    max_kb: int,
 ):
     project_path = project_path.absolute()
     if not project_path.exists():
@@ -76,25 +75,29 @@ def render(
         song_name_template = song_name_template_path.read_text()
     if not preview and output_path.exists() and not overwrite:
         raise FileExistsError(f"{output_path} already exists")
-    if FREQ / fps != (audio_frames_per_video_frame := int(FREQ / fps)):
-        raise ValueError(f"{FREQ} not evenly divisible by {fps}")
+    if audio_freq / fps != (audio_frames_per_video_frame := int(audio_freq / fps)):
+        raise ValueError(f"{audio_freq} not evenly divisible by {fps}")
     init(
         None,
-        FREQ,
+        audio_freq,
         2,
         INIT_FLAG.AUDIO_FLOAT32
         | INIT_FLAG.ONE_THREAD
         | INIT_FLAG.USER_AUDIO_CALLBACK
         | INIT_FLAG.NO_DEBUG_OUTPUT,
     )
+    total_bitrate = audio_bitrate + video_bitrate
+    max_minutes = max_kb * 8 / total_bitrate / 60
+    max_aframes = int(audio_freq * 60 * max_minutes)
     try:
         slot = Slot(project_path.absolute())
-        audio_frames = min(slot.get_song_length_frames(), MAX_FRAMES)
-        video_duration = audio_frames // FREQ
+        song_frames = slot.get_song_length_frames()
+        audio_frames = min(song_frames, max_aframes)
+        video_duration = audio_frames // audio_freq
         output = np.zeros((audio_frames, 2), DATA_TYPE)
         buffer = np.zeros((audio_frames_per_video_frame, 2), DATA_TYPE)
         output_snapshots = []
-        output_50ms_frames = int(FREQ / 1000 * 50)
+        output_50ms_frames = int(audio_freq / 1000 * 50)
         click.echo(
             f"Rendering {audio_frames} frames of audio, "
             f"{audio_frames_per_video_frame} frames at a time..."
@@ -143,7 +146,7 @@ def render(
 
     click.echo(f"Compositing {video_duration} video frames at {fps} FPS...")
 
-    audio_clip = AudioArrayClip(output, FREQ)
+    audio_clip = AudioArrayClip(output, audio_freq)
 
     bg_clip = ColorClip(
         (width, height),
@@ -254,7 +257,7 @@ def render(
         bitrate=f"{video_bitrate}k",
         codec=video_codec,
         audio_codec=audio_codec,
-        audio_fps=FREQ,
+        audio_fps=audio_freq,
         audio_bitrate=f"{audio_bitrate}k",
         remove_temp=False,
     )
