@@ -4,7 +4,7 @@ from pathlib import Path
 import click
 import numpy as np
 import pkg_resources
-from moviepy.editor import ColorClip, CompositeVideoClip, TextClip, VideoClip
+from moviepy.editor import ColorClip, CompositeVideoClip, TextClip, VideoClip, ImageClip
 from moviepy.audio.AudioClip import AudioArrayClip
 from moviepy.video.fx import fadein
 from sunvox.api import INIT_FLAG, Slot, audio_callback, deinit, get_ticks, init
@@ -18,6 +18,10 @@ CDATA_TYPE = ctypes.POINTER(ctypes.c_float)
 SCOPE_DATA_TYPE = np.int16
 SCOPE_CDATA_TYPE = ctypes.POINTER(ctypes.c_int16)
 
+SUNVID_ROOT = Path(__file__).parent
+DEFAULT_SUNDOGMEDIUM_PATH = SUNVID_ROOT / "SunDogMedium.ttf"
+DEFAULT_SUNVOX_LOGO_PATH = SUNVID_ROOT / "sunvox-logo.png"
+DEFAULT_SUNVOX_LOGO_TEXT = "Powered by SunVox - https://warmplace.ru/"
 DEFAULT_OUTPUT_PATH_TEMPLATE = "{project_path.stem}-{width}x{height}-{fps}fps.mp4"
 DEFAULT_SONG_NAME_TEMPLATE = "{song_name}"
 
@@ -40,7 +44,9 @@ def version():
 @click.option("--fps", type=int, default=15)
 @click.option("--width", type=int, default=320)
 @click.option("--height", type=int, default=180)
-@click.option("--font", type=str, default="SunDogMedium")
+@click.option("--font", type=str, default=str(DEFAULT_SUNDOGMEDIUM_PATH))
+@click.option("--sunvox-logo-path", type=Path, default=DEFAULT_SUNVOX_LOGO_PATH)
+@click.option("--sunvox-logo-text", type=str, default=DEFAULT_SUNVOX_LOGO_TEXT)
 @click.option("--audio-bitrate", type=int, default=160)
 @click.option("--video-bitrate", type=int, default=32)
 @click.option("--audio-codec", type=str, default="aac")
@@ -57,6 +63,8 @@ def render(
     width: int,
     height: int,
     font: str,
+    sunvox_logo_path: Path,
+    sunvox_logo_text: str,
     audio_bitrate: int,
     video_bitrate: int,
     audio_codec: str,
@@ -154,14 +162,13 @@ def render(
     )
 
     text = song_name_template.format(song_name=slot.get_song_name())
-    text_clip = TextClip(
-        text,
+    text_clip: TextClip = TextClip(
+        "\n" + text,
         font_size=12,
         font=font,
         color="white",
     )
-    text_clip = text_clip.with_position("center")
-    text_clip = text_clip.with_duration(video_duration)
+    text_clip = text_clip.with_position(("center", "top"))
 
     osc_w = width // 4
     osc_h = height // 4
@@ -195,7 +202,7 @@ def render(
         return vframedata
 
     osc_clip = VideoClip(make_frame=make_osc_frame)
-    osc_clip = osc_clip.with_position((0, height - osc_h))
+    osc_clip = osc_clip.with_position((0, height - osc_h - 24))
     osc_clip = fadein(osc_clip, SCOPE_FADE_IN_DURATION)
 
     def make_xy_frame(t: float):
@@ -237,12 +244,21 @@ def render(
         return vframedata
 
     xy_clip = VideoClip(make_frame=make_xy_frame)
-    xy_clip = xy_clip.with_position((width - osc_w, height - osc_h))
+    xy_clip = xy_clip.with_position((width - osc_w, height - osc_h - 24))
     xy_clip = fadein(xy_clip, SCOPE_FADE_IN_DURATION)
 
+    sunvox_logo_clip = ImageClip(sunvox_logo_path).with_position((0, height - 24))
+
+    sunvox_text_clip: TextClip = TextClip(
+        sunvox_logo_text,
+        font_size=12,
+        font=font,
+        color="white",
+    )
+    sunvox_text_clip = sunvox_text_clip.with_position((30, height - 18))
+
     video = CompositeVideoClip(
-        [bg_clip, text_clip, osc_clip, xy_clip],
-        # [bg_clip, text_clip, osc_clip],
+        [bg_clip, text_clip, osc_clip, xy_clip, sunvox_logo_clip, sunvox_text_clip],
         size=(width, height),
     )
     video = video.with_audio(audio_clip)
