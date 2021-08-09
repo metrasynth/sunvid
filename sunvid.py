@@ -129,7 +129,7 @@ def render(
                 )
                 received_r = slot.get_module_scope2(
                     0,
-                    0,
+                    1,
                     output_snapshot_r.ctypes.data_as(SCOPE_CDATA_TYPE),
                     output_50ms_frames,
                 )
