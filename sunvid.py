@@ -1,12 +1,12 @@
 import ctypes
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 import click
 import numpy as np
 import pkg_resources
-from moviepy.editor import ColorClip, CompositeVideoClip, TextClip, VideoClip, ImageClip
 from moviepy.audio.AudioClip import AudioArrayClip
+from moviepy.editor import ColorClip, CompositeVideoClip, ImageClip, TextClip, VideoClip
 from sunvox.api import INIT_FLAG, Slot, audio_callback, deinit, get_ticks, init
 from tqdm import tqdm
 
@@ -84,7 +84,8 @@ def render(
         song_name_template = song_name_template_path.read_text()
     if not preview and output_path.exists() and not overwrite:
         raise FileExistsError(f"{output_path} already exists")
-    if audio_freq / fps != (audio_frames_per_video_frame := int(audio_freq / fps)):
+    audio_frames_per_video_frame = audio_freq // fps
+    if audio_freq / fps != audio_frames_per_video_frame:
         raise ValueError(f"{audio_freq} not evenly divisible by {fps}")
     init(
         None,
@@ -122,8 +123,8 @@ def render(
 
         audio_frames = min(song_frames, max_aframes)
         video_duration = audio_frames / audio_freq + 1.0 / fps
+
         output = np.zeros((audio_frames, 2), DATA_TYPE)
-        buffer = np.zeros((audio_frames_per_video_frame, 2), DATA_TYPE)
         output_snapshots = []
         output_50ms_frames = int(audio_freq / 1000 * 50)
         click.echo(
@@ -131,43 +132,18 @@ def render(
             f"{audio_frames_per_video_frame} frames at a time, "
             f"at {audio_bitrate}kbps audio, {video_bitrate}kbps video..."
         )
+
         position = 0
         with tqdm(total=audio_frames, unit="frame", unit_scale=True) as bar:
-            slot.play_from_beginning()
-            while position < audio_frames:
-                # Grab all master output.
-                audio_callback(
-                    buffer.ctypes.data_as(CDATA_TYPE),
-                    audio_frames_per_video_frame,
-                    0,
-                    get_ticks(),
-                )
-                end_pos = min(position + audio_frames_per_video_frame, audio_frames)
-                copy_size = end_pos - position
-                output[position:end_pos] = buffer[:copy_size]
-                position = end_pos
-
-                # Grab Output module snapshots.
-                output_snapshot_l = np.zeros((output_50ms_frames,), SCOPE_DATA_TYPE)
-                output_snapshot_r = np.zeros((output_50ms_frames,), SCOPE_DATA_TYPE)
-                received_l = slot.get_module_scope2(
-                    0,
-                    0,
-                    output_snapshot_l.ctypes.data_as(SCOPE_CDATA_TYPE),
-                    output_50ms_frames,
-                )
-                received_r = slot.get_module_scope2(
-                    0,
-                    1,
-                    output_snapshot_r.ctypes.data_as(SCOPE_CDATA_TYPE),
-                    output_50ms_frames,
-                )
-                assert received_l == received_r
-                output_snapshot_l.shape = (received_l,)
-                output_snapshot_r.shape = (received_r,)
-                output_snapshots.append((output_snapshot_l, output_snapshot_r))
-
-                bar.update(copy_size)
+            for bytes_copied in render_audio_to_buffers(
+                slot=slot,
+                audio_freq=audio_freq,
+                audio_frames=audio_frames,
+                audio_frames_per_video_frame=audio_frames_per_video_frame,
+                output=output,
+                output_snapshots=output_snapshots,
+            ):
+                bar.update(bytes_copied)
     finally:
         deinit()
 
@@ -376,6 +352,47 @@ def fit_bitrates_to_size(
         audio_bitrate = new_audio_bitrate
         video_bitrate = new_video_bitrate
     return audio_bitrate, video_bitrate
+
+
+def render_audio_to_buffers(
+    slot: Slot,
+    audio_freq: int,
+    audio_frames: int,
+    audio_frames_per_video_frame: int,
+    output: np.ndarray,
+    output_snapshots: List[Tuple[np.ndarray, np.ndarray]],
+) -> Iterator[int]:
+    slot.play_from_beginning()
+    snapshot_frames = audio_freq // 1000 * 50
+    buffer = np.zeros((audio_frames_per_video_frame, 2), DATA_TYPE)
+    position = 0
+    while position < audio_frames:
+        # Grab all master output.
+        audio_callback(
+            buffer.ctypes.data_as(CDATA_TYPE),
+            audio_frames_per_video_frame,
+            0,
+            get_ticks(),
+        )
+        end_pos = min(position + audio_frames_per_video_frame, audio_frames)
+        copy_size = end_pos - position
+        output[position:end_pos] = buffer[:copy_size]
+        position = end_pos
+
+        # Grab Output module snapshots.
+        output_snapshot_l = np.zeros((snapshot_frames,), SCOPE_DATA_TYPE)
+        output_snapshot_r = np.zeros((snapshot_frames,), SCOPE_DATA_TYPE)
+        ref_l = output_snapshot_l.ctypes.data_as(SCOPE_CDATA_TYPE)
+        ref_r = output_snapshot_r.ctypes.data_as(SCOPE_CDATA_TYPE)
+        received_l = slot.get_module_scope2(0, 0, ref_l, snapshot_frames)
+        received_r = slot.get_module_scope2(0, 1, ref_r, snapshot_frames)
+        assert received_l == received_r
+        output_snapshot_l.shape = (received_l,)
+        output_snapshot_r.shape = (received_r,)
+        output_snapshots.append((output_snapshot_l, output_snapshot_r))
+
+        # Update progress bar.
+        yield copy_size
 
 
 if __name__ == "__main__":
