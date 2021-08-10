@@ -98,6 +98,9 @@ def render(
     try:
         slot = Slot(project_path.absolute())
         song_frames = slot.get_song_length_frames()
+        if song_frames == 0:
+            click.echo("The project has no playable patterns. Exiting.")
+            exit(1)
 
         if audio_bitrate and video_bitrate:
             total_bitrate = audio_bitrate + video_bitrate
