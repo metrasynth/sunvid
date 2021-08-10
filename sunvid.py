@@ -1,6 +1,6 @@
 import ctypes
 from pathlib import Path
-from typing import Iterator, List, Optional, Tuple
+from typing import Callable, Iterator, List, Optional, Tuple
 
 import click
 import numpy as np
@@ -9,6 +9,8 @@ from moviepy.audio.AudioClip import AudioArrayClip
 from moviepy.editor import ColorClip, CompositeVideoClip, ImageClip, TextClip, VideoClip
 from sunvox.api import INIT_FLAG, Slot, audio_callback, deinit, get_ticks, init
 from tqdm import tqdm
+
+OutputSnapshotList = List[Tuple[np.ndarray, np.ndarray]]
 
 MAXIMUM_AUDIO_BITRATE = 320
 MAXIMUM_VIDEO_BITRATE = 6000
@@ -169,80 +171,34 @@ def render(
     osc_w = width // 3
     osc_h = height // 3
 
-    def osc_frame_maker(channel):
-        def make_osc_frame(t: float):
-            vframe = int(t * fps)
-            vframedata = np.zeros((osc_h, osc_w, 3), np.uint8)
-            # Draw axis.
-            for x in range(osc_w):
-                y = osc_h // 2
-                vframedata[y][x] = [96, 96, 96]
-            if vframe >= len(output_snapshots):
-                return vframedata
-            snapshots: Tuple[np.ndarray, np.ndarray] = output_snapshots[vframe]
-            snapshot = snapshots[channel].astype(np.float32)
-            aframes = len(snapshot)
-            # Draw scope.
-            h2 = osc_h / 2.0
-            snapshot = -snapshot
-            snapshot /= 32768.0
-            snapshot = snapshot.clip(-1.0, 1.0)
-            snapshot *= h2
-            snapshot += h2
-            snapshot = snapshot.astype(np.uint16)
-            snapshot = snapshot.clip(0, osc_h - 1)
-            for aframe in range(aframes):
-                x = int(aframe / aframes * osc_w)
-                y = snapshot[aframe]
-                vframedata[y][x] = [255, 255, 255]
-            return vframedata
+    osc_clip_l = VideoClip(
+        make_frame=osc_frame_maker(
+            channel=0,
+            h=osc_h,
+            w=osc_w,
+            fps=fps,
+            output_snapshots=output_snapshots,
+        ),
+    ).with_position((0, height - osc_h - 24))
 
-        return make_osc_frame
+    osc_clip_r = VideoClip(
+        make_frame=osc_frame_maker(
+            channel=1,
+            h=osc_h,
+            w=osc_w,
+            fps=fps,
+            output_snapshots=output_snapshots,
+        ),
+    ).with_position((width - osc_w, height - osc_h - 24))
 
-    osc_clip_l = VideoClip(make_frame=osc_frame_maker(0))
-    osc_clip_l = osc_clip_l.with_position((0, height - osc_h - 24))
-    osc_clip_r = VideoClip(make_frame=osc_frame_maker(1))
-    osc_clip_r = osc_clip_r.with_position((width - osc_w, height - osc_h - 24))
-
-    def make_xy_frame(t: float):
-        vframe = int(t * fps)
-        vframedata = np.zeros((osc_h, osc_w, 3), np.uint8)
-        # Draw axes.
-        for x in range(osc_w):
-            y = osc_h // 2
-            vframedata[y][x] = [96, 96, 96]
-        for y in range(osc_h):
-            x = osc_w // 2
-            vframedata[y][x] = [96, 96, 96]
-        if vframe >= len(output_snapshots):
-            return vframedata
-        snapshots = output_snapshots[vframe]
-        xs: np.ndarray = snapshots[0].astype(np.float32)
-        ys: np.ndarray = snapshots[1].astype(np.float32)
-        aframes = len(xs)
-        # Draw scope.
-        h2 = osc_h / 2.0
-        w2 = osc_w / 2.0
-        xs /= 32768.0
-        ys /= 32768.0
-        xs *= 0.5625
-        ys = -ys
-        xs *= w2
-        xs += w2
-        ys *= h2
-        ys += h2
-        xs = xs.astype(np.int16)
-        ys = ys.astype(np.int16)
-        for aframe in range(aframes):
-            x = xs[aframe]
-            y = ys[aframe]
-            if x < 0 or x >= osc_w or y < 0 or y >= osc_h:
-                continue
-            vframedata[y][x] = [255, 255, 255]
-        return vframedata
-
-    xy_clip = VideoClip(make_frame=make_xy_frame)
-    xy_clip = xy_clip.with_position((osc_w, height - osc_h - 24))
+    xy_clip = VideoClip(
+        make_frame=xy_frame_maker(
+            h=osc_h,
+            w=osc_w,
+            fps=fps,
+            output_snapshots=output_snapshots,
+        )
+    ).with_position((osc_w, height - osc_h - 24))
 
     sunvox_logo_clip = ImageClip(sunvox_logo_path).with_position((0, height - 24))
 
@@ -360,7 +316,7 @@ def render_audio_to_buffers(
     audio_frames: int,
     audio_frames_per_video_frame: int,
     output: np.ndarray,
-    output_snapshots: List[Tuple[np.ndarray, np.ndarray]],
+    output_snapshots: OutputSnapshotList,
 ) -> Iterator[int]:
     slot.play_from_beginning()
     snapshot_frames = audio_freq // 1000 * 50
@@ -393,6 +349,89 @@ def render_audio_to_buffers(
 
         # Update progress bar.
         yield copy_size
+
+
+def osc_frame_maker(
+    channel: int,
+    h: int,
+    w: int,
+    fps: int,
+    output_snapshots: OutputSnapshotList,
+) -> Callable:
+    def make_osc_frame(t: float):
+        vframe = int(t * fps)
+        vframedata = np.zeros((h, w, 3), np.uint8)
+        # Draw axis.
+        for x in range(w):
+            y = h // 2
+            vframedata[y][x] = [96, 96, 96]
+        if vframe >= len(output_snapshots):
+            return vframedata
+        snapshots: Tuple[np.ndarray, np.ndarray] = output_snapshots[vframe]
+        snapshot = snapshots[channel].astype(np.float32)
+        aframes = len(snapshot)
+        # Draw scope.
+        h2 = h / 2.0
+        snapshot = -snapshot
+        snapshot /= 32768.0
+        snapshot = snapshot.clip(-1.0, 1.0)
+        snapshot *= h2
+        snapshot += h2
+        snapshot = snapshot.astype(np.uint16)
+        snapshot = snapshot.clip(0, h - 1)
+        for aframe in range(aframes):
+            x = int(aframe / aframes * w)
+            y = snapshot[aframe]
+            vframedata[y][x] = [255, 255, 255]
+        return vframedata
+
+    return make_osc_frame
+
+
+def xy_frame_maker(
+    h: int,
+    w: int,
+    fps: int,
+    output_snapshots: OutputSnapshotList,
+) -> Callable:
+    def make_xy_frame(t: float):
+        vframe = int(t * fps)
+        vframedata = np.zeros((h, w, 3), np.uint8)
+        # Draw axes.
+        for x in range(w):
+            y = h // 2
+            vframedata[y][x] = [96, 96, 96]
+        for y in range(h):
+            x = w // 2
+            vframedata[y][x] = [96, 96, 96]
+        if vframe >= len(output_snapshots):
+            return vframedata
+        snapshots = output_snapshots[vframe]
+        xs: np.ndarray = snapshots[0].astype(np.float32)
+        ys: np.ndarray = snapshots[1].astype(np.float32)
+        aframes = len(xs)
+        # Draw scope.
+        h2 = h / 2.0
+        w2 = w / 2.0
+        xs /= 32768.0
+        ys /= 32768.0
+        xs *= float(h) / w  # Ensure 1:1 pixel placement.
+        ys = -ys
+        xs *= w2
+        xs += w2
+        ys *= h2
+        ys += h2
+        xs = xs.astype(np.int16)
+        ys = ys.astype(np.int16)
+        for aframe in range(aframes):
+            x = xs[aframe]
+            y = ys[aframe]
+            if x < 0 or x >= w or y < 0 or y >= h:
+                continue
+            vframedata[y][x] = [255, 255, 255]
+        return vframedata
+
+    return make_xy_frame
 
 
 if __name__ == "__main__":
