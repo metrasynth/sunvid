@@ -102,39 +102,23 @@ def render(
             click.echo("The project has no playable patterns. Exiting.")
             exit(1)
 
-        if audio_bitrate and video_bitrate:
-            total_bitrate = audio_bitrate + video_bitrate
-            max_minutes = max_kb * 8 / total_bitrate / 60
-            max_aframes = int(audio_freq * 60 * max_minutes)
-        else:
+        if not (audio_bitrate and video_bitrate):
             # Calculate maximum bitrates that will fit within the maximum file size.
-            audio_bitrate = audio_bitrate or 64
-            video_bitrate = video_bitrate or (0 if video_codec == "none" else 32)
-            # [TODO] clean up this code
-            total_bitrate = audio_bitrate + video_bitrate
-            max_minutes = max_kb * 8 / total_bitrate / 60
-            max_aframes = int(audio_freq * 60 * max_minutes)
-            while True:
-                if audio_bitrate < MAXIMUM_AUDIO_BITRATE:
-                    new_audio_bitrate = audio_bitrate + 32
-                    new_video_bitrate = video_bitrate
-                elif video_codec == "none":
-                    break
-                elif video_bitrate >= MAXIMUM_VIDEO_BITRATE:
-                    break
-                else:
-                    new_audio_bitrate = audio_bitrate
-                    new_video_bitrate = video_bitrate + 32
-                new_total_bitrate = new_audio_bitrate + new_video_bitrate
-                new_max_minutes = max_kb * 8 / new_total_bitrate / 60
-                new_max_aframes = int(audio_freq * 60 * new_max_minutes)
-                if new_max_aframes < song_frames:
-                    break
-                audio_bitrate = new_audio_bitrate
-                video_bitrate = new_video_bitrate
-                total_bitrate = new_total_bitrate
-                max_minutes = new_max_minutes
-                max_aframes = new_max_aframes
+            min_audio_bitrate = audio_bitrate or 64
+            min_video_bitrate = 0 if video_codec is None else (video_bitrate or 32)
+            audio_bitrate, video_bitrate = fit_bitrates_to_size(
+                min_audio_bitrate=min_audio_bitrate,
+                min_video_bitrate=min_video_bitrate,
+                song_frames=song_frames,
+                audio_freq=audio_freq,
+                max_kb=max_kb,
+            )
+
+        max_aframes = max_aframes_for_bitrate(
+            bitrate=audio_bitrate + video_bitrate,
+            audio_freq=audio_freq,
+            max_kb=max_kb,
+        )
 
         audio_frames = min(song_frames, max_aframes)
         video_duration = audio_frames / audio_freq + 1.0 / fps
@@ -361,6 +345,37 @@ def render(
                     f"{size} exceeds {max_bytes}; "
                     f"rerendering with new audio bitrate {audio_bitrate}"
                 )
+
+
+def max_aframes_for_bitrate(bitrate: int, audio_freq: int, max_kb: int) -> int:
+    return int(audio_freq * 60 * max_kb * 8 / bitrate / 60)
+
+
+def fit_bitrates_to_size(
+    min_audio_bitrate: int,
+    min_video_bitrate: int,
+    song_frames: int,
+    audio_freq: int,
+    max_kb: int,
+) -> Tuple[int, int]:
+    audio_bitrate = min_audio_bitrate
+    video_bitrate = min_video_bitrate
+    while True:
+        if audio_bitrate < MAXIMUM_AUDIO_BITRATE:
+            new_audio_bitrate = audio_bitrate + 32
+            new_video_bitrate = video_bitrate
+        elif min_video_bitrate == 0 or video_bitrate >= MAXIMUM_VIDEO_BITRATE:
+            break
+        else:
+            new_audio_bitrate = audio_bitrate
+            new_video_bitrate = video_bitrate + 32
+        total_bitrate = new_audio_bitrate + new_video_bitrate
+        max_aframes = max_aframes_for_bitrate(total_bitrate, audio_freq, max_kb)
+        if max_aframes < song_frames:
+            break
+        audio_bitrate = new_audio_bitrate
+        video_bitrate = new_video_bitrate
+    return audio_bitrate, video_bitrate
 
 
 if __name__ == "__main__":
