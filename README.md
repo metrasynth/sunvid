@@ -2,6 +2,10 @@
 
 SunVid creates mp4 files from [SunVox](https://warmplace.ru/soft/sunvox/) projects.
 
+Click the image below to play a sample video:
+
+[![SunVid test project video](sunvox-test-project.png)](sunvid-test-project.mp4)
+
 ## Prerequisites
 
 Prerequisites:
