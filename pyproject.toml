@@ -7,10 +7,10 @@ license = "MIT"
 
 [tool.poetry.dependencies]
 python = "^3.9,<3.10"
-sunvox-dll-python = "^0.3.1"
+sunvox-dll-python = "^0.3.3"
 click = "^8.0.1"
-moviepy = {git = "https://github.com/Zulko/moviepy", rev = "cd473ff7"}
-librosa = "^0.8.1"
+moviepy = {git = "https://github.com/Zulko/moviepy", rev = "0b63f47"}
+librosa = "^0.9.1"
 matplotlib = "^3.4.2"
 
 [tool.poetry.dev-dependencies]
