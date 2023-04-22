@@ -73,7 +73,7 @@ def version():
 @click.option("--audio-sample-rate", type=int, default=48000)
 @click.option("--overwrite", type=bool, is_flag=True, default=False)
 @click.option("--preview", type=bool, is_flag=True, default=False)
-@click.option("--max-kb", type=int, default=8000)
+@click.option("--max-kb", type=int, default=25000)
 def render(
     project_path: Path,
     output_path_template: str,
