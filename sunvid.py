@@ -1,3 +1,6 @@
+# Must be first import:
+import matplotlib.axes  # noqa
+
 import ctypes
 from io import BytesIO
 from pathlib import Path

@@ -9,9 +9,9 @@ license = "MIT"
 python = "^3.9,<3.10"
 sunvox-dll-python = "^0.3.3"
 click = "^8.0.1"
-moviepy = {git = "https://github.com/Zulko/moviepy", rev = "0b63f47"}
-librosa = "^0.9.1"
-matplotlib = "^3.4.2"
+moviepy = {git = "https://github.com/Zulko/moviepy", rev = "69ac313a20f746be3dc14b81b894498f97142c96"}
+librosa = "^0.10.0.post2"
+matplotlib = "^3.7.1"
 
 [tool.poetry.dev-dependencies]
 jupyterlab = "^3.1.1"
